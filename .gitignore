@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.claude/settings.local.json
+
+# Secrets
+claude_tinker_api_key.rtf
+*.rtf
+.env
+
+# Run outputs are large and reproducible, except the filtered dataset, which cost ~$36 to build.
+runs/*
+!runs/data_dapo/
+runs/data_dapo/*
+!runs/data_dapo/filtered.jsonl
+!runs/data_dapo/usage.json

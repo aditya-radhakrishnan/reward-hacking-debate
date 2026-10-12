@@ -1,0 +1,11 @@
+{
+  "filter": {
+    "prefill_tokens": {
+      "openai/gpt-oss-120b": 902837
+    },
+    "sampled_tokens": {
+      "openai/gpt-oss-120b": 42264103
+    },
+    "cost_usd": 35.8
+  }
+}

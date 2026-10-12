@@ -1,0 +1,7 @@
+tinker==0.30.4
+tinker-cookbook[math-rl]==0.5.3
+math-verify==0.9.0
+datasets==5.0.1
+# Intel Macs only get torch 2.2.2 (a tinker dependency), which is built against NumPy 1.x.
+numpy<2
+pytest
