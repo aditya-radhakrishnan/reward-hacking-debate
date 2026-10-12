@@ -274,3 +274,40 @@ Simulated caps on the same votes:
 
 ## Verification
 The replication counts as successful if it shows the paper's qualitative pattern: AA's MCC falls while ABAB's stays flat, and ABAB's peak validation accuracy beats AA's and sits between AA and RLVR. Absolute numbers are not expected to match.
+
+## 6. Training loop design (proposed 2026-10-01; not yet approved or built)
+**Approach: a custom loop**, modelled on the cookbook's `recipes/rl_loop.py`. It reuses the cookbook's renderers, checkpointing and `train_step`.
+- The stock `rl/train.py` handles AA, but the debate arms need several things it doesn't do cleanly:
+  - training on one chosen turn, with the other turns sampled but not trained (prefix-then-diverge);
+  - per-debate judge rewards;
+  - word-limit penalties;
+  - an MCC evaluation with 8 votes.
+
+**Settings:**
+| Setting | Proposed |
+|---|---|
+| Algorithm | Synchronous on-policy; `importance_sampling` loss; LoRA rank 32 |
+| Batch | 32 problems × 8 samples = 256 rollouts per step; 200 steps |
+| Advantage | Reward minus the group mean; drop groups where every reward is the same |
+| KL penalty | None (the paper mentions none) |
+| AA reward | Fraction of 8 judge votes saying CORRECT; a vote with no verdict counts as INCORRECT |
+| RLVR reward | 1 if the answer is correct, else 0 |
+| Format penalty | −1 if the output is truncated or malformed |
+| Data | `runs/data_dapo/filtered.jsonl` (771 problems), split 50/50 |
+| Evaluation, every 20 steps | 150 val problems × 2 samples: accuracy, judge MCC (8 votes), response and judge lengths, bare-answer rate, saved transcripts |
+| Checkpoints | Saved at every eval, for resume |
+| Spend cap | Every run tracks its Tinker spend, including training tokens, and stops at `--max-usd` |
+
+**Learning rate:**
+- The cookbook's `get_lr` does not support GPT-OSS, and the paper gives no LR.
+- Plan: 30-step RLVR runs at 2e-5 and 4e-5 (about $105 total) before the full gate-1a run.
+- Debate arms use LR/4, as in the paper.
+
+**Bare answers are not penalised.** 24% of 120B solutions are a bare `\boxed{}` answer. The paper doesn't penalise this, and leaning on bare answers is itself a hack to observe. Track the rate at every eval.
+
+**Tinker API notes:**
+- `ServiceClient.create_lora_training_client_async(base_model, rank)`.
+- `forward_backward_async(datums, "importance_sampling")`. Each Datum needs `target_tokens`, `logprobs` and `advantages`; prompt positions have advantage 0.
+- `optim_step_async(AdamParams(learning_rate, beta1=0.9, beta2=0.95, eps=1e-8))`.
+- Get a sampling client with `save_weights_and_get_sampling_client_async()`. Resume with `save_state` / `create_training_client_from_state_with_optimizer_async`.
+- GPT-OSS trains on all sampled tokens, including the analysis channel. Re-rendered multi-turn history doesn't prefix-extend, so each debate turn becomes its own Datum.

@@ -17,7 +17,7 @@ history are in `docs/PLAN.md`; read it before proposing experiments or spending 
 ## Working rules
 - Ask before any Tinker spend and quote the estimated cost first. Paid stages require `--yes`.
 - The API key is read from the `TINKER_API_KEY` environment variable. Never print it or commit it.
-- The training loop is not built yet. Its proposed design is in `docs/PLAN.md` and the conversation history.
+- The training loop is not built yet. Its proposed design is in `docs/PLAN.md` section 6.
 
 ## Known pitfalls
 - The cookbook's `safe_grade` runs math-verify in a thread, where it always fails, and it passes the answers in reverse order. Use `rhd/grading.py`.
