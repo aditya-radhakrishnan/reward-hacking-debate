@@ -14,3 +14,6 @@ runs/*
 runs/data_dapo/*
 !runs/data_dapo/filtered.jsonl
 !runs/data_dapo/usage.json
+
+# Notes for the AI coding agent; kept locally, not part of the published repo.
+CLAUDE.md

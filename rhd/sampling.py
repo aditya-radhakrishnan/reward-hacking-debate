@@ -4,7 +4,7 @@ out, with token accounting for cost reporting."""
 import asyncio
 import warnings
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import tinker
 from tinker_cookbook import renderers
@@ -23,27 +23,38 @@ class Completion:
     visible: str
     n_tokens: int
     clean: bool  # False if truncated at max_tokens or malformed
+    # Kept for training: the rendered prompt and the sampled tokens with their logprobs.
+    prompt: tinker.ModelInput | None = None
+    tokens: list[int] = field(default_factory=list)
+    logprobs: list[float] = field(default_factory=list)
 
 
 class Usage:
     def __init__(self) -> None:
         self.prefill: dict[str, int] = defaultdict(int)
         self.sampled: dict[str, int] = defaultdict(int)
+        self.trained: dict[str, int] = defaultdict(int)
 
     def cost_usd(self) -> float:
         total = 0.0
-        for model, n in self.prefill.items():
-            total += n * PRICES[model][0] / 1e6
-        for model, n in self.sampled.items():
-            total += n * PRICES[model][1] / 1e6
+        for column, counts in enumerate([self.prefill, self.sampled, self.trained]):
+            for model, n in counts.items():
+                total += n * PRICES[model][column] / 1e6
         return total
 
     def summary(self) -> dict:
-        return {
-            "prefill_tokens": dict(self.prefill),
-            "sampled_tokens": dict(self.sampled),
-            "cost_usd": round(self.cost_usd(), 2),
-        }
+        out = {"prefill_tokens": dict(self.prefill), "sampled_tokens": dict(self.sampled)}
+        if self.trained:
+            out["trained_tokens"] = dict(self.trained)
+        out["cost_usd"] = round(self.cost_usd(), 2)
+        return out
+
+    def load(self, summary: dict) -> None:
+        """Restore counts saved by summary(), e.g. when resuming a training run."""
+        for key, counts in [("prefill_tokens", self.prefill), ("sampled_tokens", self.sampled),
+                            ("trained_tokens", self.trained)]:
+            for model, n in summary.get(key, {}).items():
+                counts[model] += n
 
 
 class ModelHandle:
@@ -92,6 +103,9 @@ class ModelHandle:
                     visible=visible,
                     n_tokens=len(seq.tokens),
                     clean=term.is_clean,
+                    prompt=prompt,
+                    tokens=list(seq.tokens),
+                    logprobs=list(seq.logprobs or []),
                 )
             )
         return out

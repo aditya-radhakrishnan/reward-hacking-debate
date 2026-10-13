@@ -1,7 +1,12 @@
-# Review: "Thoughts After Reading Paper" (Debate Training Reduces Reward Hacking in RLAIF, arXiv 2608.17776)
+# Project plan and decision log
 
 ## Context
-Aditya wants to replicate Kenton et al. (Gemini 2.5 Flash policy, Flash Lite frozen judge, proprietary AIME-like math) on Tinker with open models, then extend it. This is a review of the doc: things to fix, gaps, and what to do next. Nothing has been built yet.
+The goal is to replicate Kenton et al., *Debate Training Reduces Reward Hacking in RLAIF* ([arXiv 2608.17776](https://arxiv.org/abs/2608.17776)), on Tinker with open models, then extend it. The paper used a Gemini 2.5 Flash policy, a frozen Flash Lite judge, and proprietary AIME-like math problems.
+
+**How to read this document.** It is a chronological log, kept for the record of how decisions were made.
+- §1–§4 began as a review of the author's first notes on the paper, which aren't included. Quoted headings such as "My understanding" refer to those notes.
+- Later sections record the pilot and the decisions that followed. Sections that a later one replaced are marked *superseded* at their heading.
+- For the current design, read the [README](../README.md) and [DESIGN.md](DESIGN.md).
 
 ## 1. Corrections to "My understanding"
 - **Reward.** The judge doesn't output a probability. It is sampled **8 times** and each sample votes. Alice gets r, the fraction of votes for her, and Bob gets **1−r** (constant-sum). The penalties don't move reward from one player to the other. The word-limit penalty is a soft per-player cost proportional to the excess words. A formatting violation *replaces* that player's reward with −1.
@@ -23,22 +28,22 @@ Aditya wants to replicate Kenton et al. (Gemini 2.5 Flash policy, Flash Lite fro
 | Idea | Comment |
 |---|---|
 | Multiple critics | Say how reward is split (constant-sum across A vs {B,C}?) and how you'll control total critique length. Otherwise you are just re-testing the verbosity effect. Different critic prompts collapse under shared weights plus RL, which the paper saw with misaligned prompts too. |
-| Meta-critic C trained on judge performance | "Judge performance" needs ground truth, so this becomes partial RLVR. State that explicitly and tie it to Ansh's label-budget idea below. |
+| Meta-critic C trained on judge performance | "Judge performance" needs ground truth, so this becomes partial RLVR. State that explicitly and tie it to the label-budget idea below. |
 | More judge samples | The paper **already uses 8**. More votes cut variance but not *bias*, and hacking exploits bias. Cheap ablation (1/8/32 votes), probably a small effect. Low priority. |
 | Pairwise over A's samples | The paper tested this for AA and it was hacked *faster*. Only worth doing as "pairwise + debate", with a hypothesis for why the critic would fix it. |
 | Variable rounds gated by C | Simpler version: let the **judge** say "need another round" up to a max. Motivated by ABAABA mainly helping the *weak* judge. Needs prefix-then-diverge generalized to variable-length episodes. |
 | Step-by-step output gated by C | The paper found step-by-step formatting *hurt*: lower peak accuracy, faster degradation. Needs a strong reason before spending compute. |
 
 **Missing extensions worth adding:**
-- **Ansh's comment: label budget (IID).** Give a small labeled fraction, mix RLVR into the debate reward or fine-tune the judge, and sweep the fraction. Realistic, and easy to plot.
-- **Ansh's comment: OOD transfer.** Ground truth in domain X (e.g., algebra), judge-only in domain Y (e.g., combinatorics or code). Does debate transfer better than AA?
-- **Judge-strength sweep.** Vary the judge (e.g., 4B → 9B → 27B) with the policy fixed and plot MCC decay rate against the capability gap. This extends §4.2 into a scaling curve.
+- **Label budget (IID)**, suggested by Ansh Radhakrishnan (mentor). Give a small labeled fraction, mix RLVR into the debate reward or fine-tune the judge, and sweep the fraction. Realistic, and easy to plot.
+- **OOD transfer**, also suggested by Ansh Radhakrishnan. Ground truth in domain X (e.g., algebra), judge-only in domain Y (e.g., combinatorics or code). Does debate transfer better than AA?
+- **Judge-strength sweep.** Vary the judge (e.g., 4B → 9B → 27B) with the policy fixed and plot MCC decay rate against the capability gap. This extends the paper's §4.2 (weaker judge) into a scaling curve.
 - **Separate weights for Alice and Bob.** The doc lists shared weights as a limitation but has no experiment for it. Two LoRA adapters on Tinker make this cheap.
 - **Automated hack taxonomy.** A classifier for judge impersonation, authoritative tone, and problem-wording nitpicks. It addresses the paper's own "mechanism understanding" limitation.
 
 ## 4. Gaps in "Experiment Setup"
 The doc lists three requirements. It is missing the following:
-1. **Model pairing.** Tinker does have Inkling / Inkling-Small. Check that (a) the small model is clearly weaker at *solving* the problems, and (b) its judge MCC starts reasonably high (~0.5+). If the gap is too small, nothing gets hacked. If it's too big, the judge is noise. Backup pairing: Qwen3.5-9B judge with a Qwen3.5-35B-A3B or Qwen3.8-27B policy. Tinker uses **LoRA only**. The frozen judge is just a sampling client on the base model.
+1. **Model pairing.** Tinker offers Inkling / Inkling-Small, a large/small model pair. Check that (a) the small model is clearly weaker at *solving* the problems, and (b) its judge MCC starts reasonably high (~0.5+). If the gap is too small, nothing gets hacked. If it's too big, the judge is noise. Backup pairing: Qwen3.5-9B judge with a Qwen3.5-35B-A3B or Qwen3.8-27B policy. Tinker uses **LoRA only**. The frozen judge is just a sampling client on the base model.
 2. **Dataset.** The paper's data is proprietary. Candidates: DAPO-Math-17k, Big-Math, or OmniMath, with past AIME years held out. Filter so the policy's starting accuracy is about 30–60%. You also need an answer checker such as `math-verify`, and a 50/50 IID train/val split.
 3. **Inducing hacking in budget.** This is the biggest risk. If the AA baseline doesn't visibly hack, the replication shows nothing. The paper's 20%-dataset ablation hacked faster, so start with a small train set and long training.
 4. **RL details.** Algorithm (GRPO-style from the Tinker cookbook), group size, LR (with the 4× reduction for debate), KL on/off, LoRA rank, and max tokens per turn.
@@ -46,7 +51,7 @@ The doc lists three requirements. It is missing the following:
 6. **Metrics and logging.** Val accuracy, judge MCC, train/val reward, response and judge-reasoning lengths, and saved transcripts for qualitative review.
 7. **Runs and budget.** Arms: AA, ABAB, ABAABA, RLVR, each with ≥3 seeds. Estimate tokens per step × steps against Tinker pricing *before* launching.
 
-## 4b. Cost estimate (Tinker list prices, $/M tokens; rough, ±2×)
+## 4b. Cost estimate (Tinker list prices, $/M tokens; rough, ±2×). *Superseded:* current estimates are in DESIGN.md and `rhd/costs.py`
 **Token assumptions:**
 - Policy rollout: about 6k output tokens (reasoning plus answer).
 - Judge vote: about 2k output tokens (judge with CoT), 8 votes per rollout.
@@ -95,7 +100,7 @@ Add 20–30% for debugging and failed runs.
 - Watch out: GPT-OSS-120B and Qwen3.6 are strong at math, so problems may need to be harder (e.g., OmniMath difficulty ≥7) to keep policy accuracy around 30–60%.
 - Optional: one confirmatory ABAB-vs-AA run on Inkling at the end (about $20k).
 
-## 4c. Decision: cost-minimal pairing
+## 4c. Decision: cost-minimal pairing. *Superseded by §4e:* the pilot moved the policy to GPT-OSS-120B and the judge to GPT-OSS-20B
 **Policy: GPT-OSS-20B.**
 - Cheapest model on the list: $0.45 sample, $0.396 train.
 - Reasoning-only, so it has a natural hidden CoT.
@@ -117,7 +122,7 @@ Add 20–30% for debugging and failed runs.
 - Judge MCC at step 0 of about 0.4–0.7. Below about 0.3 the judge is noise and every arm fails.
 - Judge solve-rate clearly below the policy's.
 
-**Tradeoff to note:** a no-CoT judge is the paper's *weaker-judge* setting (§4.2), not its main one. Report the results as a replication of §4.2's ordering (ABAABA > ABAB > AA), and of §4.1 only if the CoT fallback judge is used. The "judge response length collapses" signal is also lost.
+**Tradeoff to note:** a no-CoT judge is the paper's *weaker-judge* setting (its §4.2), not its main one. Report the results as a replication of the paper's §4.2 ordering (ABAABA > ABAB > AA), and of its §4.1 only if the CoT fallback judge is used. The "judge response length collapses" signal is also lost.
 
 **Revised costs:** assumes 6k-token rollouts, 256 per step, 200 steps.
 - Per step: about $1.3 for the policy plus about $0.45 for the judge, so about $1.8/step.
@@ -141,7 +146,7 @@ Add 20–30% for debugging and failed runs.
 - **Target:** about 1–2k problems total, split 50/50.
 - **Clean held-out check** (small, low contamination): BeyondAIME (100 problems) or MathArena's recent competition sets (HMMT/AIME 2025), for sanity only.
 
-## 4d. Replication budget and go/no-go gates
+## 4d. Replication budget and go/no-go gates. *Gate structure still current; costs superseded* (see the README)
 **Evaluation cost, missing from the estimates above.**
 - Validation runs every 20 steps: 300 problems × 2 samples, plus judge votes for MCC.
 - About $2 per eval, about $20 per run.
@@ -248,7 +253,7 @@ Simulated caps on the same votes:
 - **Decision (2026-10-01): 24k cap, 8 votes for both training and evaluation, fewer seeds.**
   - A no-verdict vote counts as INCORRECT (our choice).
   - 4 vs 8 votes: MCC 0.40 vs 0.43 (95% CI of the difference −0.04 to +0.10). Reward reliability 0.80 vs 0.89.
-  - Aditya prefers paper-fidelity votes over seeds.
+  - The author prefers paper-fidelity votes over seeds.
 - **Replication budget at 8 votes:**
   | Arm | Per run |
   |---|---|
@@ -260,9 +265,8 @@ Simulated caps on the same votes:
   - **1 seed of all 4 arms is about $6.9k** with 25% overhead.
   - Then add AA + ABAB seeds at about $3.9k per extra seed pair, if the curves need it.
   - This excludes the pilot ($47.81), the dataset (about $45–65) and extensions (about $3–9k each).
-- That's about $4.25 per step, about $3.5k per seed for 4 arms, and about $13k for 3 seeds with overhead.
 
-## 5. Recommended next steps
+## 5. Recommended next steps (written before the pilot; step 1 is done, and the gates in the README replace the rest)
 1. **Pilot (cheap, no training).** Pick the models and dataset. Measure policy accuracy, judge accuracy, and zero-step judge MCC on about 500 problems.
 2. **Show the problem exists.** Run AA against RLVR until AA's MCC visibly degrades. This is the go/no-go gate.
 3. **Core replication.** ABAB, then ABAABA and the weak-judge variant.
@@ -275,7 +279,16 @@ Simulated caps on the same votes:
 ## Verification
 The replication counts as successful if it shows the paper's qualitative pattern: AA's MCC falls while ABAB's stays flat, and ABAB's peak validation accuracy beats AA's and sits between AA and RLVR. Absolute numbers are not expected to match.
 
-## 6. Training loop design (proposed 2026-10-01; not yet approved or built)
+## 6. Training loop design (proposed 2026-10-01; built 2026-10-12)
+> Built as proposed, with the details settled in [DESIGN.md](DESIGN.md), which is now the reference. Choices made while building:
+> - Groups of 8 continuations per prefix.
+> - A missing `\boxed{}` answer counts as a −1 format failure.
+> - The word-limit penalty is −0.01 per word over 150, capped at −1.
+> - The judge's majority vote is the MCC prediction.
+> - Checkpoints are saved every 5 steps.
+> - Chinese problems are excluded by default, pending a decision (§7).
+> Its cost estimates (`rhd/costs.py`) put 1 seed of all 4 arms at ≈ $5.2k, or ≈ $6.5k with 25% overhead, in line with §4e.
+
 **Approach: a custom loop**, modelled on the cookbook's `recipes/rl_loop.py`. It reuses the cookbook's renderers, checkpointing and `train_step`.
 - The stock `rl/train.py` handles AA, but the debate arms need several things it doesn't do cleanly:
   - training on one chosen turn, with the other turns sampled but not trained (prefix-then-diverge);
@@ -295,12 +308,12 @@ The replication counts as successful if it shows the paper's qualitative pattern
 | Format penalty | −1 if the output is truncated or malformed |
 | Data | `runs/data_dapo/filtered.jsonl` (771 problems), split 50/50 |
 | Evaluation, every 20 steps | 150 val problems × 2 samples: accuracy, judge MCC (8 votes), response and judge lengths, bare-answer rate, saved transcripts |
-| Checkpoints | Saved at every eval, for resume |
+| Checkpoints | Saved at every eval, for resume (as built: also every 5 steps) |
 | Spend cap | Every run tracks its Tinker spend, including training tokens, and stops at `--max-usd` |
 
 **Learning rate:**
 - The cookbook's `get_lr` does not support GPT-OSS, and the paper gives no LR.
-- Plan: 30-step RLVR runs at 2e-5 and 4e-5 (about $105 total) before the full gate-1a run.
+- Plan: 30-step RLVR runs at 2e-5 and 4e-5 (about $150 total, ≈$75 each by `rhd/costs.py`) before the full gate-1a run.
 - Debate arms use LR/4, as in the paper.
 
 **Bare answers are not penalised.** 24% of 120B solutions are a bare `\boxed{}` answer. The paper doesn't penalise this, and leaning on bare answers is itself a hack to observe. Track the rate at every eval.
@@ -311,3 +324,26 @@ The replication counts as successful if it shows the paper's qualitative pattern
 - `optim_step_async(AdamParams(learning_rate, beta1=0.9, beta2=0.95, eps=1e-8))`.
 - Get a sampling client with `save_weights_and_get_sampling_client_async()`. Resume with `save_state` / `create_training_client_from_state_with_optimizer_async`.
 - GPT-OSS trains on all sampled tokens, including the analysis channel. Re-rendered multi-turn history doesn't prefix-extend, so each debate turn becomes its own Datum.
+
+## 7. Decisions since the pilot (2026-10-12)
+**Grant application submitted.** The proposal is "Extending Debate Training Setups to Reduce Reward Hacking"; Ansh Radhakrishnan is mentor. It commits to:
+- the replication as set up here (GPT-OSS-120B policy, GPT-OSS-20B judge, DAPO-Math-17k);
+- three extensions:
+  1. a limited label budget;
+  2. generalization to a task without labels, measured with a stronger model;
+  3. robustness variants: variable rebuttal rounds, multiple critics with different prompts, and a moderator agent.
+- The proposal states no budget. See §3 for each extension's risks:
+  - Multiple critics collapse under shared weights.
+  - A trained moderator needs ground truth.
+  - Proofs have no ground truth, as Ansh Radhakrishnan pointed out in review.
+
+**Chinese problems: open, deferred (2026-10-13).** 223 of the 771 filtered problems (29%) are in Chinese. They are excluded by default for now, leaving 548 (274 train / 274 validation); `--no-english-only` includes them.
+- The word-limit loophole (Chinese has no spaces to count) is closed: the word count now counts each Chinese character as a word. A token limit was considered and rejected, because LaTeX makes math-heavy critiques cost 2–2.5× more tokens per word than prose.
+- The paper doesn't state its dataset size, so there is no target to match. Its 20%-subset ablation suggests a smaller train set is not a problem.
+- Options and data are in DESIGN.md ("Data"). Decide before the first paid run.
+
+**Unfunded work.** Until credits arrive, everything up to the first paid run is done:
+- the loop, tests, cost estimator and report tooling;
+- documentation for outside readers (README, DESIGN.md).
+
+The first paid step is a ~$16 smoke test (DESIGN.md, "Not done yet").

@@ -90,3 +90,20 @@ def read_jsonl(path: Path) -> list[dict]:
         return []
     with path.open() as f:
         return [json.loads(line) for line in f if line.strip()]
+
+
+_CJK = re.compile(r"[぀-ヿ㐀-䶿一-鿿가-힯]")
+
+
+def is_english(problem: str) -> bool:
+    """DAPO-Math-17k includes Chinese problems (29% of our filtered set). Whether to keep them is
+    still open (docs/DESIGN.md, "Data"); they are left out by default for now."""
+    return not _CJK.search(problem)
+
+
+def train_val_split(rows: list[dict], seed: int = 0, english_only: bool = True) -> tuple[list[dict], list[dict]]:
+    """Deterministic 50/50 IID split by problem id."""
+    rows = sorted((r for r in rows if not english_only or is_english(r["problem"])), key=lambda r: r["id"])
+    random.Random(seed).shuffle(rows)
+    half = len(rows) // 2
+    return rows[:half], rows[half:]

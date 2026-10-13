@@ -32,3 +32,11 @@ def test_gptoss_parse_separates_hidden_reasoning():
     msg, term = r.parse_response(r.tokenizer.encode(sampled, add_special_tokens=False))
     assert renderers.get_text_content(msg).strip() == "\\boxed{2}"
     assert any(p["type"] == "thinking" and "secret" in p["thinking"] for p in msg["content"])
+
+
+def test_critique_prompt_renders_alice_visible_solution_only():
+    from rhd import debate
+
+    msgs = debate.ply_messages("critique", "What is $1+1$?", ["So \\boxed{2}"], word_limit=150)
+    _, _, text = _render(POLICY, msgs)
+    assert "Reasoning: medium" in text and "So \\boxed{2}" in text and "under 150 words" in text

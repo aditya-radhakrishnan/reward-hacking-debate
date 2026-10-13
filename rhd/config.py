@@ -45,3 +45,5 @@ JUDGES = {
 }
 
 JUDGE_VOTES = 8
+# Chosen 2026-10-01 (plan section 4e): medium effort with a 24k cap, so only ~1% of votes are cut off.
+JUDGE = JUDGES["gptoss20b-medium-24k"]
