@@ -87,7 +87,8 @@ If the shared prefix of a group fails the format rule, the group is skipped and 
   are excluded by default; `--no-english-only` keeps them.
   - **Against keeping them:** fidelity to the paper's English data. Chinese problems also get more
     bare answers (32% vs 25%), and 40% of the policy's answers to them are written in Chinese.
-  - **For keeping them:** 40% more data. The policy's pass rate is the same on both (0.60 vs 0.59).
+  - **For keeping them:** 40% more data. The policy's pass rate is the same on both (0.60 vs 0.59),
+    and so is the judge's accuracy (MCC 0.48 on Chinese, 0.49 on English; PLAN.md §8).
   - **No longer a factor:** the word limit. The word count now counts each Chinese character as a
     word, so Chinese critiques can't slip past the limit.
   - **Options:** exclude them; keep them; or translate them to English. The paper gives no dataset

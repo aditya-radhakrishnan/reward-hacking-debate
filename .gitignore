@@ -14,6 +14,8 @@ runs/*
 runs/data_dapo/*
 !runs/data_dapo/filtered.jsonl
 !runs/data_dapo/usage.json
+# The judge's step-0 votes on that dataset, so the reported MCC can be checked.
+!runs/data_dapo/judges/
 
 # Notes for the AI coding agent; kept locally, not part of the published repo.
 CLAUDE.md

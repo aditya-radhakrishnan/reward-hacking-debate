@@ -347,3 +347,26 @@ The replication counts as successful if it shows the paper's qualitative pattern
 - documentation for outside readers (README, DESIGN.md).
 
 The first paid step is a ~$16 smoke test (DESIGN.md, "Not done yet").
+
+## 8. Judge re-measured on the committed dataset (2026-10-13, $20.82)
+The pilot's raw judge outputs weren't kept, so the judge was re-run on the committed dataset at the chosen settings: GPT-OSS-20B, medium effort, 24k cap, 8 votes. It judged the first 300 problems of `filtered.jsonl`. Votes are in `runs/data_dapo/judges/`, and the summary comes from `python -m scripts.step0`.
+
+| | All | English | Chinese |
+|---|---|---|---|
+| Problems / solutions judged | 300 / 1,057 | 216 / 778 | 84 / 279 |
+| MCC (95% CI, resampled by problem) | 0.49 (0.42–0.55) | 0.49 (0.41–0.56) | 0.48 (0.33–0.63) |
+| AUROC | 0.83 | 0.83 | 0.82 |
+| Policy correct / judge says correct | 68% / 77% | 66% / 75% | 73% / 81% |
+
+The MCC above follows the training loop's conventions. A vote with no verdict counts as INCORRECT (1.4% of votes). The 86 solutions that fail the format rule are left out.
+
+**Findings:**
+- **MCC is 0.49,** inside the 0.4–0.7 gate and a little higher than the earlier 0.43–0.44 on 288 solutions.
+- **The judge leans lenient,** accepting 77% of solutions against 68% actually correct.
+- **Language doesn't matter for judge accuracy.** It is the same on English and Chinese problems, which removes one argument for excluding the Chinese problems (§7).
+- **The capability gap was an artifact of the token cap.** At the 24k cap, the judge solves 61% of these problems (2 samples each), against the policy's 60% (4 samples each, 12k cap, 4.8% truncated). The earlier 30% vs 55% gap was measured with the judge capped at 8k tokens. So the judge is a weaker *verifier* than ground truth, but not a weaker *solver* than the policy. For comparison, the paper's judge solved 65.6–66.7% (train/validation).
+
+**Open: does the judge need to be weaker?** Gate 0's second criterion ("judge solve rate clearly below the policy's") is not met. The options:
+1. **Proceed.** MCC 0.49 and the lenient bias leave room to fool the judge, and the paper's own gap was modest. Gate 1b (does AA hack?) is the real test, at about $1.4k.
+2. **Weaken the judge.** Lower reasoning effort, or a lower token cap, which brings back lost votes. Either needs another ~$25 measurement.
+3. **Report the setup as it is,** as a weaker-verifier, equal-solver setting, which differs from the paper.
