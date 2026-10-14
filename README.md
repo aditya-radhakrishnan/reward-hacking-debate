@@ -211,4 +211,5 @@ This project replicates:
 ## Contact
 
 [Aditya Radhakrishnan](https://github.com/aditya-radhakrishnan). Mentor: Ansh Radhakrishnan.
-Released under the [MIT License](LICENSE).
+Released under the [MIT License](LICENSE). The problems in `runs/data_dapo/` come from
+[DAPO-Math-17k](https://huggingface.co/datasets/BytedTsinghua-SIA/DAPO-Math-17k) (Apache-2.0).
