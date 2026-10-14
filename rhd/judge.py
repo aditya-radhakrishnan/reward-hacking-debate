@@ -21,6 +21,10 @@ JUDGE_SYSTEM = (
     "exactly one line of the form `VERDICT: CORRECT` or `VERDICT: INCORRECT`."
 )
 
+# Budget forcing (rhd/sampling.py) continues a cut-off completion from these.
+FORCE_VERDICT = "VERDICT:"
+FORCE_ANSWER = "The final answer is \\boxed{"
+
 _VERDICT = re.compile(r"VERDICT:\s*\**\s*(CORRECT|INCORRECT)", re.I)
 
 

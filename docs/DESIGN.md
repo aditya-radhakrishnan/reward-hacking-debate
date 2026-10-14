@@ -19,13 +19,40 @@ analysis channel) and a visible response. Only visible text is passed to the oth
 the judge. Each ply is its own single-turn conversation, so earlier hidden reasoning is never in
 context.
 
-The **judge** is frozen GPT-OSS-20B at medium reasoning effort with a 24k-token cap. It sees the
-problem and the visible exchange, but never the reference answer. It decides whether Alice's
-*original* final answer is correct and ends with `VERDICT: CORRECT` or `VERDICT: INCORRECT`. It is
-sampled 8 times per episode, and a vote with no verdict counts as INCORRECT. AA reuses the pilot's
-judge prompt, so step-0 MCC is comparable with the pilot. The debate judge is also told that Bob was
-instructed to find flaws even in correct solutions, and to ignore persuasive language. Both follow
-the paper's Appendix G.
+## The judge
+
+The judge is frozen GPT-OSS-20B at medium reasoning effort.
+- **What it sees:** the problem and the visible exchange, never the reference answer.
+- **What it decides:** whether Alice's *original* final answer is correct. It ends with
+  `VERDICT: CORRECT` or `VERDICT: INCORRECT`.
+- **Votes:** it is sampled 8 times per episode. A vote with no verdict counts as INCORRECT; with
+  budget forcing that is under 1% of votes.
+- **Prompts:** AA reuses the pilot's judge prompt, so step-0 MCC is comparable with the pilot. The
+  debate judge is also told that Bob was instructed to find flaws even in correct solutions, and to
+  ignore persuasive language. Both follow the paper's Appendix G.
+
+**Thinking budget and budget forcing.** The judge gets 8,192 tokens, less than the policy's
+12,000. If it hits the budget mid-reasoning, `rhd/sampling.py` closes its reasoning, opens its
+final answer with `VERDICT:`, and samples a few more tokens. The verdict is then based on less
+reasoning, instead of being lost.
+- **Why this setting:** it was chosen from three measured on the same 1,057 solutions (PLAN.md §8):
+
+  | Setting | MCC | Judge solves | Policy solves |
+  |---|---|---|---|
+  | Medium, 24k cap | 0.49 | 61% | 60% |
+  | Low, 8k cap | 0.18 | 30% | 60% |
+  | **Medium, 8k, forced** | **0.43** | **51%** | 60% |
+
+  It is the only one that is both a usable judge (MCC ≥ 0.4) and a clearly weaker solver than the
+  policy, as in the paper.
+- **Known side effect: forced verdicts lean INCORRECT.** 15% of votes are forced, mostly on short
+  solutions with little working shown (78 words on average, against 128). Forced verdicts say
+  INCORRECT 82% of the time and agree with the truth only 52% of the time.
+  - The judge, short on time, tends to reject what it couldn't check. This pushes the policy to
+    show checkable work.
+  - The paper's judge had no budget, so this is a deviation from it. Watch `bare_answer_rate` and
+    `forced_vote_rate` in the evaluation logs: if the policy learns to game the budget, it shows
+    up there.
 
 ## One training step
 
@@ -67,7 +94,7 @@ If the shared prefix of a group fails the format rule, the group is skipped and 
 - 150 validation problems × 2 episodes, each played in full under the arm's protocol. RLVR is
   evaluated with the AA judge, since it has none of its own.
   - The same 150 problems are used at every evaluation, out of the 274 in the validation split, to
-    keep each evaluation at about $7–9. That's about 5% of a run's cost.
+    keep each evaluation at about $6–8. That's about 5% of a run's cost.
   - `--eval-problems` raises it if the curves are too noisy.
 - **Accuracy:** Alice's final answer against the reference, using math-verify and then a sympy
   fallback (`rhd/grading.py`).
@@ -88,7 +115,7 @@ If the shared prefix of a group fails the format rule, the group is skipped and 
   - **Against keeping them:** fidelity to the paper's English data. Chinese problems also get more
     bare answers (32% vs 25%), and 40% of the policy's answers to them are written in Chinese.
   - **For keeping them:** 40% more data. The policy's pass rate is the same on both (0.60 vs 0.59),
-    and so is the judge's accuracy (MCC 0.48 on Chinese, 0.49 on English; PLAN.md §8).
+    and so is the judge's accuracy (MCC 0.45 on Chinese, 0.43 on English; PLAN.md §8).
   - **No longer a factor:** the word limit. The word count now counts each Chinese character as a
     word, so Chinese critiques can't slip past the limit.
   - **Options:** exclude them; keep them; or translate them to English. The paper gives no dataset
@@ -133,12 +160,12 @@ lengths are guesses until a debate run measures them.
 
 | Arm | Per step | 200 steps + 11 evals |
 |---|---|---|
-| RLVR | $1.80 | ~$440 |
-| AA | $6.81 | ~$1,440 |
-| ABAB | $7.46 | ~$1,580 |
-| ABAABA | $8.10 | ~$1,720 |
+| RLVR | $1.80 | ~$420 |
+| AA | $5.82 | ~$1,230 |
+| ABAB | $6.48 | ~$1,370 |
+| ABAABA | $7.14 | ~$1,520 |
 
-Judge votes are about 75% of the cost in the judge arms.
+Judge votes are about 70% of the cost in the judge arms.
 
 ## Not done yet
 

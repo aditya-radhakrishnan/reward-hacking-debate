@@ -16,5 +16,23 @@
       "openai/gpt-oss-20b": 45837644
     },
     "cost_usd": 20.82
+  },
+  "judge:gptoss20b-low-8k": {
+    "prefill_tokens": {
+      "openai/gpt-oss-20b": 813795
+    },
+    "sampled_tokens": {
+      "openai/gpt-oss-20b": 4520664
+    },
+    "cost_usd": 2.2
+  },
+  "judge:gptoss20b-medium-8k-forced": {
+    "prefill_tokens": {
+      "openai/gpt-oss-20b": 14291674
+    },
+    "sampled_tokens": {
+      "openai/gpt-oss-20b": 37594049
+    },
+    "cost_usd": 19.54
   }
 }

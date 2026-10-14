@@ -12,7 +12,7 @@ from functools import cached_property
 
 from rhd import debate
 from rhd.grading import is_correct
-from rhd.judge import parse_verdict
+from rhd.judge import FORCE_VERDICT, parse_verdict
 from rhd.sampling import Completion, ModelHandle
 
 
@@ -46,6 +46,7 @@ class Episode:
     verdicts: list[bool | None] = field(default_factory=list)
     judge_tokens: list[int] = field(default_factory=list)
     judge_texts: list[str] = field(default_factory=list)  # the judge's visible responses
+    judge_forced: list[bool] = field(default_factory=list)  # votes that hit the judge's budget
 
     @cached_property
     def alice_correct(self) -> bool:
@@ -75,6 +76,7 @@ class Episode:
             "alice_share": self.alice_share,
             "judge_tokens": self.judge_tokens,
             "judge_samples": self.judge_texts[:2],  # two votes' reasoning, for reading transcripts
+            "judge_forced": self.judge_forced,
             "rewards": [self.reward(i, protocol, s) for i in range(len(self.turns))],
         }
         if trained_ply is not None:
@@ -99,10 +101,11 @@ async def _finish(policy: ModelHandle, judge: ModelHandle | None, protocol: deba
         episode.turns.append(turn)
     if protocol.reward == "judge" and judge is not None:
         msgs = debate.debate_judge_messages(episode.problem["problem"], [t.visible for t in episode.turns])
-        comps = await judge.sample(msgs, s.votes)
+        comps = await judge.sample(msgs, s.votes, FORCE_VERDICT)
         episode.verdicts = [parse_verdict(c.visible) for c in comps]
         episode.judge_tokens = [c.n_tokens for c in comps]
         episode.judge_texts = [c.visible for c in comps]
+        episode.judge_forced = [c.forced for c in comps]
     return episode
 
 

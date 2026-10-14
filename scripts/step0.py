@@ -60,6 +60,7 @@ def summarise(rows: list[dict]) -> dict:
         "auroc_95ci": _ci(by_problem, "auroc"),
         "judge_says_correct": round(float(statistics.mean(r["share"] >= 0.5 for r in rows)), 3),
         "no_verdict_rate": round(float(statistics.mean(v is None for v in votes)), 4),
+        "forced_vote_rate": round(float(statistics.mean(f for r in rows for f in r["forced"])), 4),
         "bare_answer_rate": round(float(statistics.mean(r["bare"] for r in rows)), 3),
         "mean_judge_tokens": round(statistics.mean(t for r in rows for t in r["judge_tokens"])),
     }
@@ -88,6 +89,7 @@ def main() -> None:
             "problem_id": p["id"], "correct": sol["correct"], "verdicts": v["verdicts"],
             "share": sum(x is True for x in v["verdicts"]) / len(v["verdicts"]),
             "judge_tokens": v["judge_tokens"], "bare": is_bare_answer(sol["visible"]),
+            "forced": v.get("forced", [False] * len(v["verdicts"])),
             "english": data.is_english(p["problem"]),
         })
 

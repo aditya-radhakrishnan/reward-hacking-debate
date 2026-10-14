@@ -40,3 +40,46 @@ def test_critique_prompt_renders_alice_visible_solution_only():
     msgs = debate.ply_messages("critique", "What is $1+1$?", ["So \\boxed{2}"], word_limit=150)
     _, _, text = _render(POLICY, msgs)
     assert "Reasoning: medium" in text and "So \\boxed{2}" in text and "under 150 words" in text
+
+
+def test_budget_forcing_turns_a_cut_off_vote_into_a_verdict():
+    """A judge vote that hits max_tokens mid-reasoning is closed and continued from "VERDICT:"."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from rhd.config import JUDGES
+    from rhd.judge import FORCE_VERDICT, parse_verdict
+    from rhd.sampling import ModelHandle, Usage
+
+    spec = JUDGES["gptoss20b-medium-8k-forced"]
+    tok = get_tokenizer(spec.base_model)
+    enc = lambda s: tok.encode(s, add_special_tokens=False)  # noqa: E731
+    finished = enc("<|channel|>analysis<|message|>ok<|end|><|start|>assistant<|channel|>final<|message|>VERDICT: INCORRECT<|return|>")
+    cut_off = enc("<|channel|>analysis<|message|>still checking step three and")
+
+    class FakeClient:
+        def __init__(self):
+            self.prompts = []
+
+        async def sample_async(self, prompt, num_samples, sampling_params):
+            self.prompts.append(prompt)
+            if len(self.prompts) == 1:
+                seqs = [finished, cut_off]
+            else:
+                seqs = [enc(" CORRECT<|return|>")]
+            return SimpleNamespace(sequences=[SimpleNamespace(tokens=s, logprobs=None) for s in seqs])
+
+    client = FakeClient()
+    handle = ModelHandle(spec, client, Usage(), concurrency=4)
+    done, forced = asyncio.run(handle.sample(judge_messages("P", "S \\boxed{1}"), 2, FORCE_VERDICT))
+    assert not done.forced and parse_verdict(done.visible) is False
+    assert forced.forced and forced.clean and parse_verdict(forced.visible) is True
+    assert "still checking" in forced.reasoning and "still checking" not in forced.visible
+    assert len(client.prompts) == 2  # only the cut-off vote was continued
+    tail = tok.decode(client.prompts[1].to_ints()[-12:])
+    assert tail.endswith("<|channel|>final<|message|>VERDICT:")
+
+    # Without a force prefix (or for a spec without budget_force), a cut-off stays cut off.
+    client2 = FakeClient()
+    _, cut = asyncio.run(ModelHandle(spec, client2, Usage(), 4).sample(judge_messages("P", "S"), 2))
+    assert not cut.forced and not cut.clean and cut.visible == ""

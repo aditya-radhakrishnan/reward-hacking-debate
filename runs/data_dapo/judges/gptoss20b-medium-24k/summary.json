@@ -16,6 +16,7 @@
     ],
     "judge_says_correct": 0.765,
     "no_verdict_rate": 0.0142,
+    "forced_vote_rate": 0.0,
     "bare_answer_rate": 0.286,
     "mean_judge_tokens": 4541
   },
@@ -35,6 +36,7 @@
     ],
     "judge_says_correct": 0.751,
     "no_verdict_rate": 0.0175,
+    "forced_vote_rate": 0.0,
     "bare_answer_rate": 0.27,
     "mean_judge_tokens": 4803
   },
@@ -54,6 +56,7 @@
     ],
     "judge_says_correct": 0.806,
     "no_verdict_rate": 0.0049,
+    "forced_vote_rate": 0.0,
     "bare_answer_rate": 0.33,
     "mean_judge_tokens": 3808
   },

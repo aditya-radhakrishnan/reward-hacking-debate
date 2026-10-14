@@ -23,6 +23,7 @@ class Completion:
     visible: str
     n_tokens: int
     clean: bool  # False if truncated at max_tokens or malformed
+    forced: bool = False  # hit the token budget and was made to answer (budget forcing)
     # Kept for training: the rendered prompt and the sampled tokens with their logprobs.
     prompt: tinker.ModelInput | None = None
     tokens: list[int] = field(default_factory=list)
@@ -72,7 +73,10 @@ class ModelHandle:
         client = await service.create_sampling_client_async(base_model=spec.base_model)
         return cls(spec, client, usage, concurrency)
 
-    async def sample(self, messages: list[dict], n: int) -> list[Completion]:
+    async def sample(self, messages: list[dict], n: int, force_prefix: str | None = None) -> list[Completion]:
+        """Sample n completions. With `force_prefix` and a spec that has budget_force, a completion
+        that runs out of tokens is ended and continued from `force_prefix` (e.g. "VERDICT:"), so it
+        still gives an answer, made with less reasoning."""
         prompt = self.renderer.build_generation_prompt(messages)
         params = tinker.SamplingParams(
             max_tokens=self.spec.max_tokens,
@@ -83,10 +87,15 @@ class ModelHandle:
             resp = await self.client.sample_async(prompt=prompt, num_samples=n, sampling_params=params)
         # The n samples share one prompt, so bill the prefill once (the rest are cache hits).
         self.usage.prefill[self.spec.base_model] += prompt.length
+        seqs = [list(seq.tokens) for seq in resp.sequences]
+        logprobs = [list(seq.logprobs or []) for seq in resp.sequences]
+        forced = [False] * len(seqs)
+        if force_prefix and self.spec.budget_force:
+            await self._force(prompt, seqs, forced, force_prefix)
         out = []
-        for seq in resp.sequences:
-            self.usage.sampled[self.spec.base_model] += len(seq.tokens)
-            msg, term = self.renderer.parse_response(seq.tokens)
+        for seq_tokens, seq_logprobs, was_forced in zip(seqs, logprobs, forced):
+            self.usage.sampled[self.spec.base_model] += len(seq_tokens)
+            msg, term = self.renderer.parse_response(seq_tokens)
             content = msg["content"]
             reasoning = (
                 ""
@@ -101,11 +110,35 @@ class ModelHandle:
                 Completion(
                     reasoning=reasoning,
                     visible=visible,
-                    n_tokens=len(seq.tokens),
+                    n_tokens=len(seq_tokens),
                     clean=term.is_clean,
+                    forced=was_forced,
                     prompt=prompt,
-                    tokens=list(seq.tokens),
-                    logprobs=list(seq.logprobs or []),
+                    tokens=seq_tokens,
+                    logprobs=seq_logprobs,  # forced tokens have none; never train on forced output
                 )
             )
         return out
+
+    async def _force(self, prompt, seqs: list[list[int]], forced: list[bool], force_prefix: str) -> None:
+        """Budget forcing for GPT-OSS: close the cut-off message, open the final channel with
+        `force_prefix`, and sample a short continuation. Extends `seqs` in place."""
+        if not self.spec.renderer.startswith("gpt_oss"):
+            raise ValueError(f"budget forcing is only implemented for GPT-OSS, not {self.spec.renderer}")
+        suffix = self.renderer.tokenizer.encode(
+            "<|end|><|start|>assistant<|channel|>final<|message|>" + force_prefix, add_special_tokens=False)
+        params = tinker.SamplingParams(max_tokens=32, temperature=self.spec.temperature,
+                                       stop=self.renderer.get_stop_sequences())
+
+        async def one(i: int) -> None:
+            if self.renderer.parse_response(seqs[i])[1].is_clean:
+                return
+            head = seqs[i] + suffix
+            forced_prompt = prompt.append(tinker.types.EncodedTextChunk(tokens=head))
+            async with self._sem:
+                resp = await self.client.sample_async(prompt=forced_prompt, num_samples=1, sampling_params=params)
+            self.usage.prefill[self.spec.base_model] += forced_prompt.length
+            seqs[i] = head + list(resp.sequences[0].tokens)
+            forced[i] = True
+
+        await asyncio.gather(*[one(i) for i in range(len(seqs))])

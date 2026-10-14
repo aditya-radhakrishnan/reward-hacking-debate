@@ -370,3 +370,32 @@ The MCC above follows the training loop's conventions. A vote with no verdict co
 1. **Proceed.** MCC 0.49 and the lenient bias leave room to fool the judge, and the paper's own gap was modest. Gate 1b (does AA hack?) is the real test, at about $1.4k.
 2. **Weaken the judge.** Lower reasoning effort, or a lower token cap, which brings back lost votes. Either needs another ~$25 measurement.
 3. **Report the setup as it is,** as a weaker-verifier, equal-solver setting, which differs from the paper.
+
+## 9. Weakening the judge (2026-10-14, $21.74)
+Two more GPT-OSS-20B settings were measured on the same 1,057 solutions:
+- **Low effort, 8k cap** ($2.20).
+- **Medium effort, 8k cap, with budget forcing** ($19.54). When a vote hits the cap, its reasoning is closed and it must answer from `VERDICT:` (`rhd/sampling.py`). This replaces the earlier rule, under which cut-off votes became INCORRECT.
+
+Before paying for these, re-scoring the existing 24k votes as if they had been cut off at each cap showed how MCC falls with the cap: 0.35 at 4k, 0.40 at 6k, 0.44 at 8k, 0.48 at 12k, 0.49 at 24k.
+
+| Judge | MCC (95% CI) | AUROC | Judge solves | Says correct (truth 68%) | Tokens per vote |
+|---|---|---|---|---|---|
+| Medium, 24k | 0.49 (0.42–0.55) | 0.83 | 61% | 77% | 4,541 |
+| Low, 8k | 0.18 (0.11–0.24) | 0.65 | 30% | 69% | 389 |
+| Medium, 8k, forced | 0.43 (0.36–0.50) | 0.80 | 51% (43% if forced answers count as wrong) | 73% | 3,795 |
+
+The policy solves 60% of the same problems.
+
+**Decision: medium effort, 8k, forced** is the judge (`rhd/config.py:JUDGE`). It is the only setting that meets both Gate 0 criteria:
+- MCC ≥ 0.4.
+- A clearly weaker solver than the policy. The 9-point gap is close to the paper's (judge about 66%, policy peaking near 75%).
+- It is also about 15% cheaper per vote.
+
+**One seed of all four arms is now ≈ $4.7k with the LR sweep, or ≈ $5.9k with 25% overhead** (`rhd/costs.py`, using the measured tokens per vote).
+
+**Caveat: forced verdicts lean INCORRECT.** 14.8% of votes were forced.
+- Forced verdicts say CORRECT 18% of the time, against 79% for unforced votes. They agree with the truth 52% of the time, against 73%.
+- They cluster on short solutions with little working shown (78 vs 128 words), where the judge ends up re-solving the problem.
+- So the budget penalises hard-to-verify solutions and pushes the policy to show checkable work. The paper's judge had no budget. Watch `bare_answer_rate` and `forced_vote_rate` during training.
+
+**Low effort** barely reasons (about 400 tokens per vote) and is close to chance as a judge.

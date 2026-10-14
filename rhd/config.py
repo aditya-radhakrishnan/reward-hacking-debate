@@ -10,6 +10,9 @@ class ModelSpec:
     renderer: str  # tinker_cookbook renderer name
     max_tokens: int
     temperature: float = 1.0
+    # Budget forcing: when a completion hits max_tokens, end its reasoning and make it answer at
+    # once, instead of returning a truncated completion with no answer (see rhd/sampling.py).
+    budget_force: bool = False
 
 
 # Prices: (prefill, sample, train) per 1M tokens. Cached prefill is 20% of prefill.
@@ -41,9 +44,17 @@ JUDGES = {
         # Same judge with a cap near the 32K context, to see how long it reasons when not cut off.
         # The paper reports no judge token limit.
         ModelSpec("gptoss20b-medium-24k", "openai/gpt-oss-20b", "gpt_oss_medium_reasoning", max_tokens=24_000),
+        # Low effort with room to finish, to see if it is a weaker solver but still a usable judge
+        # (plan section 8): the 4k cap above cut off votes.
+        ModelSpec("gptoss20b-low-8k", "openai/gpt-oss-20b", "gpt_oss_low_reasoning", max_tokens=8_192),
+        # Medium effort with less thinking budget than the policy (12k), and a forced verdict when
+        # the budget runs out so cut-off votes aren't scored as INCORRECT (plan section 8).
+        ModelSpec("gptoss20b-medium-8k-forced", "openai/gpt-oss-20b", "gpt_oss_medium_reasoning",
+                  max_tokens=8_192, budget_force=True),
     ]
 }
 
 JUDGE_VOTES = 8
-# Chosen 2026-10-01 (plan section 4e): medium effort with a 24k cap, so only ~1% of votes are cut off.
-JUDGE = JUDGES["gptoss20b-medium-24k"]
+# Chosen 2026-10-14 (plan section 8): medium effort, 8k budget with a forced verdict. MCC 0.43 and
+# a solve rate of 51% against the policy's 60%; at 24k the judge solved as many problems as the policy.
+JUDGE = JUDGES["gptoss20b-medium-8k-forced"]

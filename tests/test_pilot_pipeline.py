@@ -22,7 +22,7 @@ class FakeHandle:
     async def create(cls, service, spec, usage, concurrency=64):
         return cls(spec, usage)
 
-    async def sample(self, messages, n):
+    async def sample(self, messages, n, force_prefix=None):
         self.usage.sampled[self.spec.base_model] += 100 * n
         user = messages[-1]["content"]
         if user.startswith("## Problem"):

@@ -27,7 +27,7 @@ import tinker
 from rhd import data
 from rhd.config import JUDGE_VOTES, JUDGES, POLICIES, POLICY
 from rhd.grading import is_correct
-from rhd.judge import judge_messages, parse_verdict, solver_messages
+from rhd.judge import FORCE_ANSWER, FORCE_VERDICT, judge_messages, parse_verdict, solver_messages
 from rhd.metrics import auroc, mcc
 from rhd.sampling import ModelHandle, Usage
 
@@ -145,15 +145,17 @@ async def stage_judge(args) -> None:
         votes = Appender(judge_dir(judge_name) / "votes.jsonl")
 
         async def solve(p):
-            comps = await judge.sample(solver_messages(p["problem"]), args.judge_solve_samples)
-            solves.write({"key": p["id"], "correct": [is_correct(c.visible, p["answer"]) for c in comps]})
+            comps = await judge.sample(solver_messages(p["problem"]), args.judge_solve_samples, FORCE_ANSWER)
+            solves.write({"key": p["id"], "correct": [is_correct(c.visible, p["answer"]) for c in comps],
+                          "n_tokens": [c.n_tokens for c in comps], "forced": [c.forced for c in comps]})
 
         async def vote(p, i, sol):
-            comps = await judge.sample(judge_messages(p["problem"], sol["visible"]), args.votes)
+            comps = await judge.sample(judge_messages(p["problem"], sol["visible"]), args.votes, FORCE_VERDICT)
             verdicts = [parse_verdict(c.visible) for c in comps]
             votes.write({
                 "key": f"{p['id']}:{i}", "problem_id": p["id"], "correct": sol["correct"],
                 "verdicts": verdicts, "judge_tokens": [c.n_tokens for c in comps],
+                "forced": [c.forced for c in comps],
             })
 
         coros = [solve(p) for p in problems if p["id"] not in solves.done]

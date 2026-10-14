@@ -13,7 +13,13 @@ from rhd.debate import PROTOCOLS
 # rebuttal reuse the solution figure (hidden reasoning dominates either way).
 POLICY_COMPLETION = 4_300
 POLICY_PROMPT = {"solve": 300, "critique": 1_000, "rebuttal": 1_300}
-JUDGE_COMPLETION = 5_400  # GPT-OSS-20B medium at a 24k cap
+# Judge: (mean sampled tokens per vote, share of votes budget-forced), measured on the committed
+# dataset (plan section 8). A forced vote re-sends its cut-off reasoning as prompt.
+JUDGE_VOTE = {
+    "gptoss20b-medium-24k": (4_541, 0.0),
+    "gptoss20b-low-8k": (389, 0.0),
+    "gptoss20b-medium-8k-forced": (3_795, 0.148),
+}
 JUDGE_PROMPT = {1: 800, 2: 1_100, 3: 1_400}  # by number of plies the judge reads
 
 
@@ -51,6 +57,13 @@ def estimate(cfg) -> Estimate:
     policy, judge = POLICIES[cfg.policy].base_model, JUDGES[cfg.judge].base_model
     n_plies, g = len(protocol.plies), cfg.group_size
     uses_judge = protocol.reward == "judge"
+    vote_tokens, forced_rate = JUDGE_VOTE[cfg.judge]
+    forced_prefill = forced_rate * (JUDGE_PROMPT[n_plies] + JUDGES[cfg.judge].max_tokens)
+
+    def judge_cost(episodes: float) -> float:
+        votes = episodes * cfg.votes
+        return (_sample(judge, JUDGE_PROMPT[n_plies], vote_tokens, episodes, votes)
+                + votes * forced_prefill * PRICES[judge][0] / 1e6)
 
     # One group, averaged over which ply is trained.
     group = 0.0
@@ -61,14 +74,14 @@ def estimate(cfg) -> Estimate:
             group += _sample(policy, POLICY_PROMPT[kind], POLICY_COMPLETION, calls, n)
         group += g * (POLICY_PROMPT[protocol.plies[k]] + POLICY_COMPLETION) * PRICES[policy][2] / 1e6
         if uses_judge:
-            group += _sample(judge, JUDGE_PROMPT[n_plies], JUDGE_COMPLETION, g, g * cfg.votes)
+            group += judge_cost(g)
     group /= len(protocol.trainable_plies)
     per_step = group * cfg.groups_per_step
 
     # Evaluation always uses a judge (RLVR is measured with the AA judge).
     episodes = cfg.eval_problems * cfg.eval_samples
     per_eval = sum(_sample(policy, POLICY_PROMPT[k], POLICY_COMPLETION, episodes, episodes) for k in protocol.plies)
-    per_eval += _sample(judge, JUDGE_PROMPT[n_plies], JUDGE_COMPLETION, episodes, episodes * cfg.votes)
+    per_eval += judge_cost(episodes)
     n_evals = cfg.steps // cfg.eval_every + 1 + (cfg.steps % cfg.eval_every != 0)
 
     return Estimate(per_step, per_step * cfg.steps, per_eval, per_eval * n_evals)

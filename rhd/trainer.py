@@ -125,6 +125,7 @@ def judge_metrics(episodes: list[Episode]) -> dict:
         "auroc": round(auroc(shares, labels), 4),
         "alice_share": _mean(shares),
         "no_verdict_rate": _mean(v is None for v in votes),
+        "forced_vote_rate": _mean(f for e in judged for f in e.judge_forced),
     }
 
 

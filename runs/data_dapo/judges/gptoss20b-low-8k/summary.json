@@ -1,0 +1,66 @@
+{
+  "judge": "gptoss20b-low-8k",
+  "all": {
+    "problems": 300,
+    "solutions": 1057,
+    "policy_accuracy": 0.677,
+    "mcc": 0.177,
+    "mcc_95ci": [
+      0.109,
+      0.244
+    ],
+    "auroc": 0.649,
+    "auroc_95ci": [
+      0.609,
+      0.687
+    ],
+    "judge_says_correct": 0.685,
+    "no_verdict_rate": 0.0259,
+    "forced_vote_rate": 0.0,
+    "bare_answer_rate": 0.286,
+    "mean_judge_tokens": 389
+  },
+  "english": {
+    "problems": 216,
+    "solutions": 778,
+    "policy_accuracy": 0.658,
+    "mcc": 0.198,
+    "mcc_95ci": [
+      0.121,
+      0.279
+    ],
+    "auroc": 0.651,
+    "auroc_95ci": [
+      0.609,
+      0.694
+    ],
+    "judge_says_correct": 0.694,
+    "no_verdict_rate": 0.0255,
+    "forced_vote_rate": 0.0,
+    "bare_answer_rate": 0.27,
+    "mean_judge_tokens": 393
+  },
+  "chinese": {
+    "problems": 84,
+    "solutions": 279,
+    "policy_accuracy": 0.731,
+    "mcc": 0.127,
+    "mcc_95ci": [
+      -0.008,
+      0.285
+    ],
+    "auroc": 0.648,
+    "auroc_95ci": [
+      0.562,
+      0.734
+    ],
+    "judge_says_correct": 0.659,
+    "no_verdict_rate": 0.0269,
+    "forced_vote_rate": 0.0,
+    "bare_answer_rate": 0.33,
+    "mean_judge_tokens": 378
+  },
+  "excluded_format_failures": 86,
+  "judge_solve_rate": 0.3,
+  "policy_solve_rate_same_problems": 0.597
+}

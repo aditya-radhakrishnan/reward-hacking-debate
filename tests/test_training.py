@@ -31,7 +31,7 @@ class FakeHandle:
     async def create(cls, service, spec, usage, concurrency=64):
         return cls(spec, None, usage, concurrency)
 
-    async def sample(self, messages, n):
+    async def sample(self, messages, n, force_prefix=None):
         system, user = messages[0]["content"], messages[-1]["content"]
         self.usage.sampled[self.spec.base_model] += 100 * n
         if system in (JUDGE_SYSTEM, debate.DEBATE_JUDGE_SYSTEM):

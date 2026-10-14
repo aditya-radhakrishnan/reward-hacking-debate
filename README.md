@@ -19,7 +19,7 @@ credits.
 | | |
 |---|---|
 | Policy (trained) | GPT-OSS-120B, medium reasoning effort, LoRA rank 32 |
-| Judge (frozen) | GPT-OSS-20B, medium reasoning effort, 8 votes per episode |
+| Judge (frozen) | GPT-OSS-20B, medium reasoning effort, 8k-token thinking budget, 8 votes per episode |
 | Data | DAPO-Math-17k problems the policy solves 20–80% of the time: 771 in total, or 548 if the Chinese-language ones are left out (an open decision; see [DESIGN.md](docs/DESIGN.md#data)) |
 | Main metric | The judge's MCC on held-out problems, which falls as the policy learns to fool the judge |
 
@@ -66,25 +66,34 @@ Absolute numbers aren't expected to match the paper's. The full design is in
 
 ## What's done
 
-**Gate 0: pilot (no training, $69, plus $36 to build the dataset).** The pilot picked the models
+**Gate 0: pilot (no training, $90, plus $36 to build the dataset).** The pilot picked the models
 and data, and found three bugs before they could cost real money.
-- **Judge choice.** Cheap judges were too weak to be useful: their MCC before any training was
-  0.16–0.27 against a GPT-OSS-20B policy. A GPT-OSS-120B policy with a GPT-OSS-20B judge reaches
-  **MCC 0.49** (95% CI 0.42–0.55, AUROC 0.83) at the chosen settings, measured on 1,057 policy
-  solutions to 300 problems. That is inside the 0.4–0.7 range we set as the pilot's pass
-  criterion: good enough to give real signal, weak enough to be fooled. The judge also leans
-  lenient: it accepts 77% of solutions, while only 68% are actually right.
-  - The judge's votes are committed (`runs/data_dapo/judges/`), and `python -m scripts.step0`
+- **Judge choice.** The judge has to be imperfect enough to be fooled, but accurate enough that
+  its reward means something. It should also be weaker than the policy, as in the paper. Three
+  settings of GPT-OSS-20B were measured on the same 1,057 policy solutions to 300 problems:
+
+  | GPT-OSS-20B judge | MCC (95% CI) | Solves alone | Policy solves | Tokens per vote |
+  |---|---|---|---|---|
+  | Medium effort, 24k-token cap | 0.49 (0.42–0.55) | 61% | 60% | 4,540 |
+  | Low effort, 8k cap | 0.18 (0.11–0.24) | 30% | 60% | 390 |
+  | **Medium effort, 8k cap, forced verdict (chosen)** | **0.43 (0.36–0.50)** | **51%** | 60% | 3,800 |
+
+  - **Medium effort at 24k** was a good judge but solved as many problems as the policy.
+  - **Low effort** was clearly weaker, but barely better than chance as a judge.
+  - **The chosen setting** gives the judge less thinking budget than the policy (8k against 12k
+    tokens). When it runs out, *budget forcing* ends its reasoning and makes it give a verdict at
+    once. This meets both pilot criteria:
+    - MCC is inside the 0.4–0.7 range we set: good enough to give real signal, weak enough to be
+      fooled.
+    - The judge solves 9 points fewer problems than the policy. That is similar to the paper,
+      where the judge solved about 66% and the policy peaked near 75%.
+  - **It leans lenient:** it accepts 73% of solutions, while 68% are actually right. MCC is the
+    same on the dataset's English and Chinese problems (0.43 vs 0.45).
+  - **Known side effect:** 15% of votes hit the budget, mostly on short solutions with little
+    working shown. Those forced verdicts lean INCORRECT, which pushes the policy to show checkable
+    work. See [DESIGN.md](docs/DESIGN.md#the-judge).
+  - All votes are committed (`runs/data_dapo/judges/`), and `python -m scripts.step0 --judge <name>`
     recomputes these numbers for free.
-  - The judge is equally accurate on the dataset's English and Chinese problems (MCC 0.49 vs 0.48).
-- **Capability gap: open issue.** At the chosen 24k-token cap, the judge solves 61% of these
-  problems on its own, against the policy's 60%. So the judge is a weaker *verifier* than a
-  ground-truth check, but not a weaker *solver* than the policy.
-  - An earlier measurement showed a 30% vs 55% gap, but it came from capping the judge at 8k
-    tokens, which cut it off mid-reasoning.
-  - The paper's judge was also close to its policy: it solved about 66% of problems.
-  - Whether this setup needs a weaker judge is still being decided.
-- **Judge token cap.** Raising it from 8k to 24k cut lost votes from 20% to 1%.
 - **Dataset.** 771 problems were filtered from DAPO-Math-17k at the policy's 20–80% pass rate.
   Whether to keep the 223 Chinese-language problems is still open.
 - **Bugs fixed:**
@@ -101,7 +110,7 @@ and data, and found three bugs before they could cost real money.
 - evaluation every 20 steps, with MCC, accuracy and saved transcripts;
 - resumable checkpoints and a hard spend cap.
 
-It is covered by 29 offline tests, including every arm end to end against a fake Tinker backend.
+It is covered by 30 offline tests, including every arm end to end against a fake Tinker backend.
 
 ## What credits buy
 
@@ -110,15 +119,15 @@ the pilot's measured token counts and are rough (±30%).
 
 | Gate | Run | Est. cost | Passes if |
 |---|---|---|---|
-| 0 | Pilot | done ($105) | Judge MCC 0.4–0.7 (met: 0.49). Judge clearly weaker than the policy at solving (not met; see above) |
-| 1a | Smoke test (2 steps); LR sweep (2 × 30 RLVR steps); then RLVR, 200 steps | ~$16 + ~$150 + ~$440 | The real API behaves like the offline tests, and validation accuracy rises |
-| 1b | AA, 200 steps | ~$1,440 | **Reward rises while MCC falls**: the hacking the paper studies, reproduced |
-| 2 | ABAB + ABAABA, 200 steps each | ~$3,300 | Debate holds MCC flat where AA's falls |
-| 3 | +2 seeds of all arms | ~$10,400 | Error bars on the curves, and the accuracy comparison |
+| 0 | Pilot | done ($126) | Judge MCC 0.4–0.7 and clearly weaker than the policy at solving (both met: 0.43, and 51% vs 60%) |
+| 1a | Smoke test (2 steps); LR sweep (2 × 30 RLVR steps); then RLVR, 200 steps | ~$14 + ~$140 + ~$420 | The real API behaves like the offline tests, and validation accuracy rises |
+| 1b | AA, 200 steps | ~$1,230 | **Reward rises while MCC falls**: the hacking the paper studies, reproduced |
+| 2 | ABAB + ABAABA, 200 steps each | ~$2,890 | Debate holds MCC flat where AA's falls |
+| 3 | +2 seeds of all arms | ~$9,100 | Error bars on the curves, and the accuracy comparison |
 
-One seed of the full replication comes to about **$5.3k, or about $6.7k with 25% for reruns**.
+One seed of the full replication comes to about **$4.7k, or about $5.9k with 25% for reruns**.
 Each extension is roughly $3–9k. If 1b fails (AA doesn't visibly hack), the project stops there
-for about $2k.
+for about $1.8k.
 
 ## Planned extensions
 
@@ -151,12 +160,12 @@ Tested with Python 3.12; plain `python3 -m venv` works too with a recent Python.
 ### Reproducing the pilot
 
 The filtered dataset is committed (`runs/data_dapo/filtered.jsonl`), so training doesn't depend on
-rerunning the pilot. To build a comparable dataset and re-measure the judge (about $60):
+rerunning the pilot. To build a comparable dataset and re-measure the judge (about $55):
 
 ```bash
 .venv/bin/python -m scripts.pilot pool --sources dapo --pool-size 2200 --out runs/pilot-repro
 .venv/bin/python -m scripts.pilot filter --yes --out runs/pilot-repro
-.venv/bin/python -m scripts.pilot judge --yes --judges gptoss20b-medium-24k --out runs/pilot-repro
+.venv/bin/python -m scripts.pilot judge --yes --judges gptoss20b-medium-8k-forced --out runs/pilot-repro
 .venv/bin/python -m scripts.pilot report --out runs/pilot-repro
 ```
 
