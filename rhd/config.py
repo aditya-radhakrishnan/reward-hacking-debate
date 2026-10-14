@@ -1,4 +1,5 @@
-"""Model choices and Tinker list prices (USD per million tokens), as of 2026-09-28."""
+"""Model choices and Tinker list prices (USD per million tokens), as of 2026-09-28; re-checked
+unchanged on 2026-10-14 (https://tinker-docs.thinkingmachines.ai/tinker/models/)."""
 
 from dataclasses import dataclass
 
