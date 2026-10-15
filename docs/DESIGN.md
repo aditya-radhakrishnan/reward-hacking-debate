@@ -108,14 +108,14 @@ If the shared prefix of a group fails the format rule, the group is skipped and 
 
 ## Data
 
-- `runs/data_dapo/filtered.jsonl` holds 771 DAPO-Math-17k problems the policy solved 20–80% of the
-  time in the pilot.
+- `runs/data_dapo/filtered.jsonl` holds 771 DAPO-Math-17k problems the policy solved 1–3 times out of 4
+  (25–75%) in the pilot.
 - **223 of them (29%) are in Chinese.** Whether to keep them is an **open decision**. For now they
   are excluded by default; `--no-english-only` keeps them.
   - **Against keeping them:** fidelity to the paper's English data. Chinese problems also get more
     bare answers (32% vs 25%), and 40% of the policy's answers to them are written in Chinese.
   - **For keeping them:** 40% more data. The policy's pass rate is the same on both (0.60 vs 0.59),
-    and so is the judge's accuracy (MCC 0.45 on Chinese, 0.43 on English; PLAN.md §8).
+    and so is the judge's accuracy (MCC 0.45 on Chinese, 0.43 on English for the chosen judge; PLAN.md §9).
   - **No longer a factor:** the word limit. The word count now counts each Chinese character as a
     word, so Chinese critiques can't slip past the limit.
   - **Options:** exclude them; keep them; or translate them to English. The paper gives no dataset
@@ -176,3 +176,24 @@ Judge votes are about 70% of the cost in the judge arms.
   behaviour. The first paid run should be short (`--steps 2 --eval-problems 10 --max-usd 20`) to
   check sampling logprobs, datum lengths for GPT-OSS, checkpoint save and resume, and real token
   counts against the estimate.
+
+## Reproducing the pilot
+
+The filtered dataset is committed (`runs/data_dapo/filtered.jsonl`), so training doesn't depend on
+rerunning the pilot. To build a comparable dataset and re-measure the judge (about $55):
+
+```bash
+.venv/bin/python -m scripts.pilot pool --sources dapo --pool-size 2200 --out runs/pilot-repro
+.venv/bin/python -m scripts.pilot filter --yes --out runs/pilot-repro
+.venv/bin/python -m scripts.pilot judge --yes --judges gptoss20b-medium-8k-forced --out runs/pilot-repro
+.venv/bin/python -m scripts.pilot report --out runs/pilot-repro
+```
+
+This rebuilds the dataset approximately. The original pool of about 2,200 problems was drawn from
+DAPO problems that an earlier GPT-OSS-20B policy hadn't always solved; these commands draw from all
+of DAPO instead.
+
+The judge measurements, by contrast, can be checked exactly. Their votes on the committed dataset
+are in `runs/data_dapo/judges/`, and `python -m scripts.step0 --judge <name>` recomputes their
+summaries for free.
+

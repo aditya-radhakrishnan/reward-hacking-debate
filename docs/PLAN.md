@@ -399,3 +399,34 @@ The policy solves 60% of the same problems.
 - So the budget penalises hard-to-verify solutions and pushes the policy to show checkable work. The paper's judge had no budget. Watch `bare_answer_rate` and `forced_vote_rate` during training.
 
 **Low effort** barely reasons (about 400 tokens per vote) and is close to chance as a judge.
+
+## 10. Full budget (2026-10-15)
+The README's budget table is costed with `rhd/costs.py` at current Tinker prices. Every run is 200 steps.
+
+**Replication, 3 seeds per arm: $13.8k.**
+
+| Stage | Runs | Cost |
+|---|---|---|
+| 1a | Smoke test ($14), LR sweep ($140), RLVR ($420) | $580 |
+| 1b | AA | $1,230 |
+| 2 | ABAB ($1,370) and ABAABA ($1,520) | $2,890 |
+| 3 | 2 more seeds of all 4 arms | $9,090 |
+
+**Extensions, 2 seeds per new arm, compared against the replication's baselines: $20.8k.** None of their code is built yet, so these are the least certain figures.
+1. **Label budget:** ABAB with 10% and 30% of rewards taken from ground truth, 4 runs × $1,370 = **$5.5k**. Labelled episodes would skip some judge calls, so this is conservative.
+2. **Generalization:** AA and ABAB on a new domain, 4 runs = $5.2k. A stronger grader evaluates them: Kimi-K2.6 at $5.49/M sampled, 3 votes on 300 episodes per evaluation, 44 evaluations, about $0.95k. Plus about $60 to filter data and check the grader against ground truth on math. **≈ $6.2k.**
+3. **Debate variants:** variable rounds, multiple critics and a moderator, 6 runs costed like ABAABA at $1,520 = **$9.1k**. Variable rounds could cost more.
+
+**Total: $34.6k, or ≈ $43k with 25% for reruns.** Three seeds for the extensions would make it ≈ $45k, or ≈ $56k with reruns.
+
+**Decision (2026-10-15): fit the funded plan under $20k.** The README now budgets:
+- the replication with 3 seeds of AA and ABAB, and 1 each of RLVR and ABAABA ($9.9k);
+- plus the label-budget extension ($5.5k);
+- in total $15.4k, or ≈ $19.3k with reruns.
+
+Generalization and the debate variants are stretch goals. With both, the program is ≈ $38k with reruns. The grant proposal lists all three extensions, so present the other two as stretch goals there too.
+
+**Review fixes (2026-10-15).** An adversarial review found no wrong numbers. It did lead to these changes:
+- **Label-budget extension, defined and narrowed.** On a random 10% or 30% of training problems, the reference answer replaces the judge: Alice gets correctness (1/0) and Bob gets 1 − correctness, keeping the game constant-sum, and it is compared with ABAB (0%) and RLVR (100%). With ABAB arms only, it asks *whether a little ground truth makes debate more robust*, not how much it takes to stop hacking; that would need labelled AA arms too. Its reward-mixing code isn't built yet.
+- **Judge comparison qualified.** The paper comparison (judge ~66% vs policy peak ~75%) was dropped: the 75% is the trained policy's peak, while ours is the untrained policy. The README also notes that the MCC confidence interval (0.36–0.50) reaches below 0.4, and that the policy's 60% is in-sample, measured on the samples used to select the problems.
+
