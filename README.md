@@ -1,19 +1,16 @@
 # Debate training against reward hacking, with open-weight models
 
 Language models trained with reinforcement learning against an AI judge (RLAIF) can
-learn to "reward hack": to give answers that fool the judge rather than answers that are actually correct. Kenton et al., *Debate Training Reduces
+learn to "reward hack": to give answers that fool the judge rather than answers that are actually correct. Kenton et al., in *Debate Training Reduces
 Reward Hacking in RLAIF* ([arXiv 2608.17776](https://arxiv.org/abs/2608.17776)), demonstrate that adding
 a critic, a second copy of the model that points out flaws in the solver's answer, slows reward hacking. Their results use Gemini models and a proprietary dataset.
 
 My goal is to replicate that result with open-weight models and public data, and then extend
-it. The main extension I want to try is mixing a small amount of ground truth into the rewards:
-can a little real supervision make debate even more robust? If there's room, I'd also like to see
-whether debate still helps on tasks without reference answers, and try a few different debate
-formats. Everything runs on [Tinker](https://thinkingmachines.ai/tinker/), Thinking Machines' API
-for fine-tuning and sampling open-weight models.
+it. I've listed possible extensions below, but these are by no means exhaustive. Everything runs
+on [Tinker](https://thinkingmachines.ai/tinker/), an API for fine-tuning open-weight models.
 
 So far, I've finished a pilot and built the training loop, which is tested offline.
-Training is waiting on compute. The replication plus the labels extension needs about $19k, and
+Training is waiting on compute. The replication plus one extension, which mixes in some ground-truth labels, needs about $19k, while
 the first big question, whether the baseline actually reward-hacks, can be answered for about
 $1.8k. The details are in [Plan and budget](#plan-and-budget).
 
@@ -23,28 +20,28 @@ an 8k-token budget per vote. I chose GPT-OSS because it's open-weight, it's avai
 and it reasons privately before giving a visible answer. That matches the paper, where the judge
 only ever sees the visible part.
 
-The problems come from DAPO-Math-17k: 771 that the model solved 1 to 3 times out of 4. By default
-I leave out the 223 that are in Chinese, which leaves 548, split evenly between training and
-validation. I haven't fully decided on that yet ([DESIGN.md](docs/DESIGN.md#data) has the
-details). The main thing I measure is the judge's MCC on held-out problems: how well its verdicts
-match whether the answers are actually right. It falls as the model learns to fool the judge.
+The 771 problems come from a subset of DAPO-Math-17k. Many of the original problems are too easy or too hard for the model to solve, which means I wouldn't get useful signal on the model's ability to fool a judge. To find them, I had the model attempt each of about 2,200 problems four times, and removed the ones it always solved (too easy) or never solved (too hard), screening out roughly 1,400 problems.
+
+For now, I'm planning to leave out the 223 problems that are in Chinese. This leaves 548 problems, split evenly between training and
+validation, but this could change ([DESIGN.md](docs/DESIGN.md#data) has more
+details). The main metric for this experiment is the judge's MCC on held-out problems: how well its verdicts
+match whether the answers are actually right. This falls as the model learns to reward hack.
 
 ## Terms
 
 | Term | Meaning |
 |---|---|
 | Policy | The model being trained. It plays both Alice (the solver) and Bob (the critic), with shared weights. |
-| Ply | One turn by one player, e.g. Alice's solution or Bob's critique. Each ply has hidden reasoning and a visible response. |
 | AA, ABAB, ABAABA | The paper's names for its protocols. AA is a single solver turn with no critic. ABAB adds Bob's critique. ABAABA adds Alice's reply to it. |
 | RLVR | RL from verifiable rewards: the policy is rewarded for matching the reference answer directly, so there is no judge to fool. It's the best case the judge-based setups could hope to reach. |
 | MCC | Matthews correlation coefficient: how well the judge's verdict agrees with whether Alice's answer is actually right. It ranges from −1 to 1, where 0 is chance. Reward hacking shows up as falling MCC while the training reward rises. |
-| Prefix-then-diverge | The paper's way of training multi-turn debates. Pick one ply, keep the earlier plies fixed, sample several alternatives for that ply, and compare their rewards. |
+| Prefix-then-diverge | The paper's way of training multi-turn debates. Pick one turn, keep the earlier turns fixed, sample several alternatives for that turn, and compare their rewards. |
 
 ## The experiment
 
-I train the same model four different ways:
+I train the same model in four different ways:
 
-1. RLVR: Alice answers, and a script checks her answer against the reference. There's no judge,
+1. Standard RLVR: Alice answers, and a script checks her answer against the reference. There's no judge,
    so there's nothing to hack. This is the best case.
 2. AA: Alice answers, and the judge decides if she's right. This is the baseline, and the one I
    expect to reward-hack.
@@ -55,7 +52,7 @@ Alice's reward is the share of the judge's votes saying her answer is correct, a
 rest. The judge never sees the reference answer or anyone's hidden reasoning. Apart from RLVR and
 the labels extension, I only use the reference answer to measure reward hacking, never to train.
 
-If the replication works, I should see three things:
+If the replication works, I expect to notice three things:
 - In AA, the reward goes up during training while the judge's MCC goes down. That's reward hacking.
 - In ABAB, MCC stays roughly flat.
 - ABAB's best validation accuracy lands between AA and RLVR. The paper's gap here was only about 2
@@ -70,14 +67,11 @@ I don't expect the absolute numbers to match the paper's, just the pattern. The 
 ### The pilot
 
 Before spending thousands of dollars on training, I wanted to check that the experiment could
-actually work. The pilot cost $126 in total, including $36 to build the dataset. The pilot doesn't train anything. It only samples from the models and compares what
-they say with the reference answers, to answer three questions. It also measured how many tokens
-everything uses, which is where the cost estimates come from.
+actually work, so I ran a pilot. The pilot cost $126 in total, including $36 to build the dataset. The pilot didn't train anything. It only sampled from the models and compared what
+they said with the reference answers, which helped me answer three questions to ensure the validity of the experiment setup. The pilot also measured how many tokens were used, which is where the cost estimates come from.
 
 1. Are the problems the right difficulty? The policy wrote 4 solutions to each of about 2,200
-   DAPO-Math-17k problems (already narrowed to ones a smaller model hadn't always solved), and I kept the 771 it got right 1, 2 or 3 times out of 4 (147, 182
-   and 442 problems). A problem it always solves leaves nothing to learn or hack, and one it never
-   solves gives it nothing to learn from.
+   DAPO-Math-17k problems (already narrowed to ones a smaller model hadn't always solved), and I kept the 771 it got right only some of the time. 
 2. Can the judge tell right answers from wrong ones, but not perfectly? The judge voted 8 times
    on each of the policy's solutions without seeing the reference answer, and I scored its majority
    verdict with MCC. I was aiming for 0.4–0.7. Any lower and its reward is mostly noise. Any higher
@@ -105,9 +99,9 @@ away. Its MCC lands in the target range, though the confidence interval dips jus
 solves 9 points fewer problems than the policy, though that gap is approximate, since the policy's
 60% comes from the same samples I used to pick the problems.
 
-One thing to keep an eye on: about 15% of votes get forced, more often on short solutions, and
-forced verdicts lean INCORRECT. That should nudge the policy to show its work, which is probably
-fine, but it's a difference from the paper. There's more on this in
+One important caveat is that about 15% of votes get forced, more often on short solutions, and
+forced verdicts lean INCORRECT. That should nudge the policy to show its work, which is likely
+okay, but it's a difference from the paper. There's more on this in
 [DESIGN.md](docs/DESIGN.md#the-judge).
 
 All the votes are committed in `runs/data_dapo/judges/`, so anyone can check these numbers:
@@ -118,11 +112,10 @@ All the votes are committed in `runs/data_dapo/judges/`, so anyone can check the
 I built a custom training loop that runs all four setups. It uses prefix-then-diverge training, so
 Alice and Bob each learn from their own turns, and it rewards them from the judge's votes, with
 penalties for going over the word limit or breaking format. Every 20 steps it evaluates on held-out
-problems, tracking MCC and accuracy and saving transcripts I can read through. Runs save
+problems, tracking MCC and accuracy and saving transcripts I can manually read through. Runs save
 checkpoints so they can resume, and stop before a step would go over a spend cap.
 
-It's ready to run but waiting on compute. It has 30 offline tests, including every setup run end to
-end against a fake version of Tinker.
+Everything is ready to run but waiting on compute. It has 30 offline tests to catch bugs before any compute is spent, including every setup running end-to-end against a fake version of Tinker.
 
 ## Plan and budget
 
@@ -141,9 +134,7 @@ also ran RLVR only once.
 | 4. Label budget | ABAB with 10% and 30% of training problems rewarded by the reference answer; 2 seeds each | $5,500 | $15,400 | |
 | Total | 12 full training runs | $15.4k | | About $19k with 25% for reruns |
 
-The estimates use the token counts from the pilot and Tinker's current prices, so they're rough,
-give or take 30%. If AA doesn't hack at stage 1b, there's nothing to replicate, and I'd stop there,
-having spent about $1.8k.
+The estimates use the token counts from the pilot and Tinker's current prices, so they're rough, give or take 30%. If AA doesn't hack at stage 1b, there's nothing to replicate, so I'd re-evaluate the experiment setup, having spent about $1.8k.
 
 The labels extension asks whether a little ground truth makes debate more robust. On a random 10%
 or 30% of training problems, the reference answer replaces the judge: Alice gets 1 if she's right
